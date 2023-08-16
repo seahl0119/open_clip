@@ -1,4 +1,5 @@
 import ast
+import io
 import json
 import logging
 import math
@@ -15,6 +16,7 @@ import torch
 import torchvision.datasets as datasets
 import webdataset as wds
 from PIL import Image
+from torch.nn.functional import pad
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler, IterableDataset, get_worker_info
 from torch.utils.data.distributed import DistributedSampler
 from webdataset.filters import _shuffle
@@ -52,7 +54,7 @@ class CsvDataset(Dataset):
 class CsvDataset_video(Dataset):
     def __init__(self, input_filename, transforms, img_key="contentUrl", caption_key="name", sep="\t", tokenizer=None):
         logging.debug(f'Loading csv data from {input_filename}.')
-        df = pd.read_csv(input_filename, sep=sep)
+        df = pd.read_csv(input_filename)
 
         self.videos = df[img_key].tolist() # contentUrl
         self.captions = df[caption_key].tolist() # name
@@ -71,18 +73,21 @@ class CsvDataset_video(Dataset):
         return videos, texts
 
     def process_video(self, video_url):
-        response = requests(video_url, timeout=10)
+        response = requests.get(video_url, timeout=5)
         video_data = None
         videos = []
         if response.status_code == 200:
             video_data = response.content
             response.close()
+        else:
+            raise ValueError("Status code")
         if video_data:
-            video_array = VideoReader(io.BytesIO(video_data))[::4].asnumpy() # FIXME: hyperparameter (stride)
+            video_array = VideoReader(io.BytesIO(video_data))[:512:4].asnumpy() # FIXME: hyperparameter (len, stride)
             for v in video_array:
                 videos.append(self.transforms(Image.fromarray(v)))
-        # padding
-        videos = np.pad(videos, [[128-len(video)], [0,0], [0,0], [0,0]]) # FIXME: hyperparameter (len)
+            # padding
+            if len(videos) < 128:
+                videos += [torch.zeros(videos[0].shape)] * (128 - len(videos)) # FIXME: hyperparameter (len)
         return torch.stack(videos)
 
 

@@ -4,6 +4,9 @@ import os
 import re
 import subprocess
 import sys
+
+sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+
 import random
 from datetime import datetime
 

@@ -292,6 +292,10 @@ class CLIP_video(nn.Module):
         self.video_projection = video.text_projection
         self.register_buffer('attn_mask_video', video.attn_mask, persistent=False)
         self.video_embed_dim = embed_dim
+        self.video_cls = torch.nn.Parameter(
+                (self.video_embed_dim ** -0.5) * torch.randn(self.video_embed_dim),
+                requires_grad=True,
+            )
         
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
@@ -321,6 +325,8 @@ class CLIP_video(nn.Module):
         x = self.transformer_video(x, attn_mask=self.attn_mask_video)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_final_video(x)  # [batch_size, n_ctx, transformer.width]
+        # replace CLS token
+        x[torch.arange(x.shape[0]), video_len.argmax(dim=-1)] = self.video_cls
         # take features from the eot embedding (eot_token is the highest number in each sequence)
         x = x[torch.arange(x.shape[0]), video_len.argmax(dim=-1)] @ self.video_projection
         
@@ -349,7 +355,7 @@ class CLIP_video(nn.Module):
         text_features = self.encode_text(text, normalize=True) if text is not None else None
         if self.output_dict:
             return {
-                "video_features": video_features,
+                "image_features": video_features,
                 "text_features": text_features,
                 "logit_scale": self.logit_scale.exp()
             }
