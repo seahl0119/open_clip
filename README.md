@@ -99,6 +99,9 @@
   - Downlaod data in advance
   - Use enough frames
 
+## Results - loss
+<img src="docs/CLIP_video_loss.png" width="700">
+
 ---
 ---
 ---
