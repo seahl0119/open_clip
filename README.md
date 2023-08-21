@@ -1,3 +1,104 @@
+
+# Implementation Details for Video-embedding Model
+## Summary
+- `src/openclip`
+  - Modify the model from CLIP to CLIP video and the transfrom in `factory.py`
+  - Implement the CLIP_video in `model.py`
+  - Very naive video_transform in `transform.py`
+  - New config `model_configs/ViT-S-16-video.json` for CLIP_video
+- `src/training`
+  - Load webvid data in `data.py`
+  - (minor) Add PATH in `main.py`
+  - (minor) New args choices in `params.py`
+
+## Code chagnes
+- `src/openclip`
+  - factory.py
+    - Import new library `CLIP_video` and `video_transform`, and use them.
+    - L13, L20, L192-195, L329, L336
+  - model.py
+    - Implement CLIP_video (L257-362)
+    - I use the same text encoder as before.
+    - Newly initialize the `video_CLS` and `frame transformer`.
+    - In the case of video encoder,
+      - Run vision transformer for each frame (We can reduce time cost here)
+      - Attach the CLS token
+      - Run frame transformer
+      ```python
+          def encode_video(self, video, normalize: bool = False):
+              # video = rearrange(video, 'b l c h w -> (b l) c h w') #FIXME: batch 크기가 b -> b * l 로 커짐
+              video = video
+              video_len = (video == torch.zeros(video.shape[2:], device=video.device)).sum((2,3,4))
+              features = []
+              for i in range(video.shape[1]): # 0 ~ l 
+                  features.append(self.visual(video[:,i])) # b 1 d
+              features = torch.stack(features, dim=1) # b l d
+
+              cast_dtype = self.transformer_video.get_cast_dtype()
+
+              x = features.to(cast_dtype)  # [batch_size, n_ctx, d_model]
+              # replace CLS token
+              x[torch.arange(x.shape[0]), video_len.argmax(dim=-1)] = self.video_cls
+              x = x + self.positional_embedding_video.to(cast_dtype)
+              x = x.permute(1, 0, 2)  # NLD -> LND
+              x = self.transformer_video(x, attn_mask=self.attn_mask_video)
+              x = x.permute(1, 0, 2)  # LND -> NLD
+              x = self.ln_final_video(x)  # [batch_size, n_ctx, transformer.width]
+              # take features from the eot embedding (eot_token is the highest number in each sequence)
+              x = x[torch.arange(x.shape[0]), video_len.argmax(dim=-1)] @ self.video_projection
+
+              return F.normalize(x, dim=-1) if normalize else x
+      ```
+
+  - transform.py
+    - Remove randomCrop for frame consistency(?)
+  - model_configs/ViT-S-16-video.json
+    - Add video_cfg
+- `src/training`
+  - data.py
+    - Due to the resource issue, data was requested and used whenever needed.
+    - I use 128 frames with stride 4: refer 4, 8, 12, ... frames (resource issue)
+    - L53-92, L519-547
+    ```python
+        def process_video(self, video_url):
+        headers = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"}
+        response = requests.get(video_url, timeout=15, headers=headers)
+        video_data = None
+        videos = []
+        if response.status_code == 200:
+            video_data = response.content
+            response.close()
+        else:
+            raise ValueError("Status code")
+        if video_data:
+            video_array = VideoReader(io.BytesIO(video_data))[:512:4].asnumpy() # FIXME: hyperparameter (len, stride)
+            for v in video_array:
+                videos.append(self.transforms(Image.fromarray(v)))
+            # padding
+            if len(videos) < 128:
+                videos += [torch.zeros(videos[0].shape)] * (128 - len(videos)) # FIXME: hyperparameter (len)
+        return torch.stack(videos)
+    ```
+  - (minor) main.py
+    - Due to refer the custom openclip repo, I add the syspath
+    ```pyhton
+    sys.path.append(os.path.dirname(os.path.abspath(os.path.dirname(__file__))))
+    ```
+    - L7-9
+  - (minor) params.py
+    - Add new arg choices
+
+## TODO
+- [ ] Implement the transform for video such as frame-consistency randomcrop.
+- [ ] Data error handling
+- [ ] Resource
+  - Run vition transformer for whole frames at once
+  - Downlaod data in advance
+  - Use enough frames
+---
+
+
+
 # OpenCLIP
 
 [[Paper]](https://arxiv.org/abs/2212.07143) [[Clip Colab]](https://colab.research.google.com/github/mlfoundations/open_clip/blob/master/docs/Interacting_with_open_clip.ipynb) [[Coca Colab]](https://colab.research.google.com/github/mlfoundations/open_clip/blob/master/docs/Interacting_with_open_coca.ipynb)

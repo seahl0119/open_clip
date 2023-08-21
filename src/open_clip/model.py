@@ -320,13 +320,13 @@ class CLIP_video(nn.Module):
         cast_dtype = self.transformer_video.get_cast_dtype()
 
         x = features.to(cast_dtype)  # [batch_size, n_ctx, d_model]
+        # replace CLS token
+        x[torch.arange(x.shape[0]), video_len.argmax(dim=-1)] = self.video_cls
         x = x + self.positional_embedding_video.to(cast_dtype)
         x = x.permute(1, 0, 2)  # NLD -> LND
         x = self.transformer_video(x, attn_mask=self.attn_mask_video)
         x = x.permute(1, 0, 2)  # LND -> NLD
         x = self.ln_final_video(x)  # [batch_size, n_ctx, transformer.width]
-        # replace CLS token
-        x[torch.arange(x.shape[0]), video_len.argmax(dim=-1)] = self.video_cls
         # take features from the eot embedding (eot_token is the highest number in each sequence)
         x = x[torch.arange(x.shape[0]), video_len.argmax(dim=-1)] @ self.video_projection
         
