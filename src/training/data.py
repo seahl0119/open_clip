@@ -73,7 +73,8 @@ class CsvDataset_video(Dataset):
         return videos, texts
 
     def process_video(self, video_url):
-        response = requests.get(video_url, timeout=5)
+        headers = {"user-agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36"}
+        response = requests.get(video_url, timeout=15, headers=headers)
         video_data = None
         videos = []
         if response.status_code == 200:
