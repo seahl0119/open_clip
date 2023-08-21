@@ -1,4 +1,7 @@
 
+---
+---
+---
 # Implementation Details for Video-embedding Model
 ## Summary
 - `src/openclip`
@@ -95,9 +98,10 @@
   - Run vition transformer for whole frames at once
   - Downlaod data in advance
   - Use enough frames
+
 ---
-
-
+---
+---
 
 # OpenCLIP
 
